@@ -1,13 +1,13 @@
 import sys
 
 import tensorflow as tf
-sys.path.insert(1, './truecaser')
+#sys.path.insert(1, './truecaser')
 import truecaser_tf
 import pickle
 tf.compat.v1.enable_eager_execution()
 
 def load_truecasing_model(model_filename):
-    with open(model_filename, 'rb') as bin_file:  # from s3://workfit-models/auto-punc/
+    with open(model_filename, 'rb') as bin_file:
         uni_dist = pickle.load(bin_file)
         backward_bi_dist = pickle.load(bin_file)
         forward_bi_dist = pickle.load(bin_file)
@@ -16,7 +16,7 @@ def load_truecasing_model(model_filename):
         return word_casing_lookup, uni_dist, backward_bi_dist, forward_bi_dist, trigram_dist
 
 truecaser_weights = 'en_truecasing_model.obj'
-export_path = './truecaser_serving/2/'
+export_path = './truecaser_serving/1/'
 wordCasingLookup, uniDist, backwardBiDist, forwardBiDist, trigramDist = load_truecasing_model(truecaser_weights)
 tf_model = truecaser_tf.NGramTF()
 tf_model.fit(wordCasingLookup, uniDist, backwardBiDist, forwardBiDist, trigramDist)

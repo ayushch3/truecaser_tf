@@ -142,7 +142,7 @@ class NGramTF(tf.Module):
         #return cap_tensor
 
     #@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.string, name="input_text")])
-    #@tf.function
+    @tf.function
     def get_true_case(self, tokens_tensor):
         #tokens_tensor = tf.constant(tokens)
 

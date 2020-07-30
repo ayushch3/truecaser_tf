@@ -135,11 +135,8 @@ class NGramTF(tf.Module):
         first_char_cap = tf.strings.upper(first_char)
 
         cap_char_tensor = tf.concat([tf.reshape(first_char_cap, [1]), char_tensor[1:]], 0)
-        cap_tensor = tf.strings.join(cap_char_tensor)
-        #cap_tensor_split = tf.split(cap_char_tensor, num_or_size_splits = cap_char_tensor.shape[0], axis = 0)
-        #cap_tensor = tf.strings.join(cap_tensor_split)
+        cap_tensor = tf.strings.reduce_join(cap_char_tensor)
         return tf.reshape(cap_tensor, [1])
-        #return cap_tensor
 
     #@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.string, name="input_text")])
     @tf.function
@@ -147,9 +144,7 @@ class NGramTF(tf.Module):
         #tokens_tensor = tf.constant(tokens)
 
         # get first token capitalized
-        #cap_first_token = self.capitalaize_str(tokens_tensor[0])
-        cap_first_token = tf.reshape(tokens_tensor[0], [1])
-
+        cap_first_token = self.capitalaize_str(tokens_tensor[0])
         trueCasedTokens = cap_first_token
         tokens_tensor = tf.slice(tokens_tensor, [1], [-1])
 
@@ -179,7 +174,6 @@ class NGramTF(tf.Module):
                 trueCasedTokens = tf.concat([trueCasedTokens, trueVariant], 0)
 
             tokens_tensor = tf.slice(tokens_tensor, [1], [-1])
-            print(tokens_tensor, trueCasedTokens)
             return tokens_tensor, trueCasedTokens
 
         res = tf.while_loop(condition,

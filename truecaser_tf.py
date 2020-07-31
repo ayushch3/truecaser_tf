@@ -1,5 +1,5 @@
 import tensorflow as tf
-import numpy as np
+
 
 class NGramTF(tf.Module):
     def __init__(self):
@@ -63,10 +63,12 @@ class NGramTF(tf.Module):
 
     def get_alternative_tokens(self, possible_token_tensor):
         idx = self.word_casing.lookup(possible_token_tensor)
-        if tf.get_static_value(tf.equal(idx, tf.constant([[-1]])))[0]:
-            return tf.constant([[b'']])
-        alternative_tokens = self.word_casing_lookup[idx]
-        alternative_tokens = tf.gather(alternative_tokens, tf.where(alternative_tokens != b''))
+
+        def f1(): return tf.constant([], dtype=tf.dtypes.string)
+
+        def f2(): return tf.gather(self.word_casing_lookup[idx[0]], tf.where(self.word_casing_lookup[idx[0]] != b''))
+
+        alternative_tokens = tf.cond(tf.equal(idx, [-1]), f1, f2)
         return alternative_tokens
 
     def compute_unigram_score(self, possible_token_tensor, alternative_tokens):
@@ -126,8 +128,7 @@ class NGramTF(tf.Module):
             result += tf.math.log(trigram_score)
         return result
 
-    @staticmethod
-    def capitalaize_str(token_tensor):
+    def capitalize_str(self, token_tensor):
         token_tensor = tf.reshape(token_tensor, [1])
         char_tensor = tf.compat.v1.string_split(token_tensor, delimiter='').values
 
@@ -138,48 +139,58 @@ class NGramTF(tf.Module):
         cap_tensor = tf.strings.reduce_join(cap_char_tensor)
         return tf.reshape(cap_tensor, [1])
 
-    #@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.string, name="input_text")])
     @tf.function
     def get_true_case(self, tokens_tensor):
-        #tokens_tensor = tf.constant(tokens)
+        cap_first_token = self.capitalize_str(tokens_tensor[0:1])
+        cur_token0 = tokens_tensor[0:1]
 
-        # get first token capitalized
-        cap_first_token = self.capitalaize_str(tokens_tensor[0])
-        trueCasedTokens = cap_first_token
-        tokens_tensor = tf.slice(tokens_tensor, [1], [-1])
+        true_cased_tokens0 = cap_first_token
+        tokens_tensor0 = tokens_tensor[1:-1]
+        i0 = tf.constant(1)
+        condition = lambda i, true_cased_tokens, tokens_tensor: tf.less_equal(i, tf.size(tokens_tensor0) + 1)
 
-        condition = lambda tokens_tensor, trueCasedTokens: tf.greater(tf.size(tokens_tensor), 0)
+        def body(i, true_cased_tokens, tokens_tensor):
+            cur_token = tokens_tensor[i: i + 1]
+            prev_token = true_cased_tokens[-1:]
 
-        def body(tokens_tensor, trueCasedTokens):
-            cur_tokens_tensor = tf.concat([trueCasedTokens[-1:], tokens_tensor], 0)
-            curToken = tf.get_static_value(tf.slice(cur_tokens_tensor, [1], [1]))[0]
-            curToken = tf.get_static_value(tf.strings.lower(curToken))
+            def f1(): return tokens_tensor[i + 1: i + 2]
 
-            prevToken = tf.slice(cur_tokens_tensor, [0], [1])
-            if tf.get_static_value(tf.greater(tf.size(cur_tokens_tensor), [3]))[0]:
-                nextToken = tf.slice(cur_tokens_tensor, [2], [1])
-            else:
-                nextToken = None
+            def f2(): return tf.constant([b''])
 
-            wordCasingLookup = tf.reshape(self.get_alternative_tokens(tf.constant(curToken)), [-1])
-            if tf.get_static_value(tf.equal(tf.size(wordCasingLookup), [0]))[0]:
-                trueCasedTokens = tf.concat([trueCasedTokens, tf.constant(curToken)], 0)
-            if tf.get_static_value(tf.equal(tf.size(wordCasingLookup), [1]))[0]:
-                trueCasedTokens = tf.concat([trueCasedTokens, wordCasingLookup], 0)
-            else:
-                scores = tf.map_fn(lambda x: self.get_score(prevToken, x, nextToken),
-                                   wordCasingLookup, dtype=tf.float32)
-                maxElementIndx = tf.get_static_value(tf.argmax(scores))[0]
-                trueVariant = tf.slice(wordCasingLookup, [maxElementIndx], [1])
-                trueCasedTokens = tf.concat([trueCasedTokens, trueVariant], 0)
+            next_token = tf.cond(tf.less(i, tf.size(tokens_tensor)),
+                                 f1,
+                                 f2)
+            ind = self.word_casing.lookup(cur_token)
+            word_casing_lookup = self.get_alternative_tokens(cur_token)
 
-            tokens_tensor = tf.slice(tokens_tensor, [1], [-1])
-            return tokens_tensor, trueCasedTokens
+            def f_true_cased_0():
+                return cur_token
+
+            def f_true_cased_1():
+                return word_casing_lookup[0]
+
+            cur_token_transformed = tf.cond(tf.equal(tf.size(word_casing_lookup), 0),
+                                            f_true_cased_0,
+                                            f_true_cased_1)
+
+            def f_return_cur():
+                return cur_token_transformed
+
+            def f_find_best():
+                scores = tf.map_fn(lambda x: self.get_score(prev_token, x, next_token),
+                                   word_casing_lookup, dtype=tf.float32)
+                max_el_ind = tf.argmax(scores)
+                truecased_token = word_casing_lookup[max_el_ind[0]: max_el_ind[0] + 1]
+                return truecased_token[0]
+
+            cur_token_transformed = tf.cond(tf.greater(tf.size(word_casing_lookup), 1), f_find_best, f_return_cur)
+
+            true_cased_tokens = tf.concat([true_cased_tokens, cur_token_transformed], 0)
+
+            return [tf.add(i, 1), true_cased_tokens, tokens_tensor]
 
         res = tf.while_loop(condition,
-                            lambda tokens_tensor, trueCasedTokens: body(tokens_tensor, trueCasedTokens),
-                            [tokens_tensor, trueCasedTokens])                    
-        res = res[1]
-        res = tf.gather(res, tf.where(res != b''))
-
-        return res
+                            body,
+                            [i0, true_cased_tokens0, tokens_tensor],
+                            shape_invariants=[tf.TensorShape([]), tf.TensorShape([None]), tf.TensorShape([None])])
+        return res[1]

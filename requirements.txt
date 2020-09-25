@@ -1,4 +1,4 @@
 nltk>=3.4.5
 numpy>=1.16.4
-Tensorflow==2.0.1
+Tensorflow==2.0.3
 pickle==4.0
